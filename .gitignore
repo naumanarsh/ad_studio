@@ -37,7 +37,7 @@ yarn-error.log*
 /data
 
 # local editor/agent settings
-.claude/settings.local.json
+.claude/settings.local.json*
 
 # stray saved page — not part of the app
 /index.html

@@ -1,0 +1,38 @@
+# Fly.io config — staging deploy for Ad Studio.
+# Single always-on machine by design: SQLite + the in-process job queue are
+# single-process. Do not scale horizontally until the Supabase migration.
+app = "ad-studio-staging"
+primary_region = "iad"
+
+[build]
+  # Uses the repo Dockerfile.
+
+[env]
+  # SQLite + generated media live on the mounted volume.
+  AD_STUDIO_DATA_DIR = "/data"
+  # Hard daily ceiling on AI spend — staging default is deliberately low.
+  AI_DAILY_BUDGET_USD = "10"
+
+[mounts]
+  source = "ad_studio_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  # The queue must keep draining after a response returns — never stop
+  # the machine, or in-flight generations die silently.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
