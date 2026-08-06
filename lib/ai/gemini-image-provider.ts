@@ -61,6 +61,13 @@ export class GeminiImageProvider implements ImageProvider {
               ],
             },
           ],
+          ...(request.aspect
+            ? {
+                generationConfig: {
+                  imageConfig: { aspectRatio: request.aspect },
+                },
+              }
+            : {}),
         }),
         signal: AbortSignal.timeout(120_000),
       },

@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { toast } from "sonner";
-import { RetryImage } from "@/components/retry-image";
 import { Button } from "@/components/ui/button";
+import { ZoomableImage } from "@/components/zoomable-image";
+import { EditableCaption } from "@/features/posts/editable-caption";
 import { setPostStatusAction } from "@/lib/actions/post.actions";
 import {
   POST_PLATFORM_LABELS,
@@ -66,7 +67,7 @@ export function PostDetail({
 
       {image && (
         <div className="flex flex-col gap-2">
-          <RetryImage
+          <ZoomableImage
             src={`/api/images/${image.id}`}
             alt="Post visual"
             className="w-full border"
@@ -80,12 +81,7 @@ export function PostDetail({
       )}
 
       <div className="flex flex-col gap-2 border bg-card p-4">
-        <p className="whitespace-pre-line text-sm leading-relaxed">
-          {post.caption}
-        </p>
-        {post.hashtags && (
-          <p className="text-xs text-muted-foreground">{post.hashtags}</p>
-        )}
+        <EditableCaption post={post} />
         <Button size="sm" className="mt-2 self-start" onClick={copyCaption}>
           <Copy className="size-4" /> Copy caption
         </Button>

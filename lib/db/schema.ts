@@ -7,7 +7,7 @@
  * Bump when SCHEMA_SQL or migrate() changes so a dev server's cached
  * connection (which only runs the schema on open) gets reopened.
  */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 export const SCHEMA_SQL = `
 create table if not exists trends (
@@ -107,6 +107,16 @@ create table if not exists studio_images (
   id integer primary key autoincrement,
   post_id integer references posts (id) on delete set null,
   prompt text not null,
+  mime text not null,
+  data blob not null,
+  model text not null default '',
+  created_at text not null default (datetime('now'))
+);
+
+create table if not exists brand_assets (
+  id integer primary key autoincrement,
+  kind text not null default 'product' check (kind in ('logo', 'product')),
+  name text not null default '',
   mime text not null,
   data blob not null,
   created_at text not null default (datetime('now'))

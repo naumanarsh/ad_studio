@@ -7,6 +7,7 @@ import { getBrandProfile } from "@/lib/repositories/brand.repo";
 import * as postsRepo from "@/lib/repositories/posts.repo";
 import { localDate } from "@/lib/db/client";
 import { activePlatforms, formatBrandContext } from "@/lib/services/brand.service";
+import { assertWithinDailyBudget } from "@/lib/services/budget.service";
 import { generatePostImages } from "@/lib/services/image.service";
 import { POST_PLATFORMS, type Post, type PostPlatform } from "@/lib/types/content";
 
@@ -58,6 +59,7 @@ export async function generateAds(
   promo: string,
   imageModel?: string | null,
 ): Promise<AdCampaign> {
+  assertWithinDailyBudget();
   const profile = getBrandProfile();
   const brandContext = formatBrandContext(profile);
   const platforms = activePlatforms(profile);

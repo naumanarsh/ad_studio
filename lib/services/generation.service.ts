@@ -17,6 +17,7 @@ import * as postImagesRepo from "@/lib/repositories/post-images.repo";
 import * as postsRepo from "@/lib/repositories/posts.repo";
 import * as trendsRepo from "@/lib/repositories/trends.repo";
 import { activePlatforms, formatBrandContext } from "@/lib/services/brand.service";
+import { assertWithinDailyBudget } from "@/lib/services/budget.service";
 import { generatePostImages } from "@/lib/services/image.service";
 import { fetchPageText } from "@/lib/services/page-fetch";
 import type {
@@ -87,6 +88,7 @@ export type TrendPostResult = {
 export async function createPostFromTrend(
   trendId: number,
 ): Promise<TrendPostResult> {
+  assertWithinDailyBudget();
   const trend = trendsRepo.getTrend(trendId);
   if (!trend) throw new Error("That trend no longer exists.");
 
@@ -168,6 +170,7 @@ export async function createPostFromTrend(
 export async function createPostFromIdea(
   ideaId: number,
 ): Promise<TrendPostResult> {
+  assertWithinDailyBudget();
   const idea = ideasRepo.getIdea(ideaId);
   if (!idea) throw new Error("That idea no longer exists.");
 

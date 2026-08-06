@@ -8,6 +8,7 @@ import {
   listRecentResponses,
   recordAiRequest,
 } from "@/lib/repositories/ai-logs.repo";
+import { listImageBriefsByStatus } from "@/lib/repositories/posts.repo";
 import type { BrandProfile, Post } from "@/lib/types/content";
 
 const MODEL = process.env.AI_MODEL ?? "claude-opus-5";
@@ -26,7 +27,7 @@ function brandLines(brand: BrandProfile | null): string {
     .join("\n");
 }
 
-async function callClaude(
+export async function callClaude(
   purpose: string,
   content: Anthropic.Beta.BetaContentBlockParam[],
   system: string,
@@ -82,6 +83,31 @@ async function callClaude(
   }
 }
 
+/**
+ * The learning loop: briefs behind posts the team APPROVED are quality
+ * exemplars; rejected ones are anti-examples. Every review decision the
+ * team makes sharpens the next brief.
+ */
+function outcomeExemplarsBlock(): string {
+  const strip = (brief: string) =>
+    brief.replace(/^[^\n]*\n/, "").replace(/\s+/g, " ").slice(0, 220);
+  const winners = listImageBriefsByStatus("approved", 3).map(strip);
+  const losers = listImageBriefsByStatus("rejected", 2).map(strip);
+  if (winners.length === 0 && losers.length === 0) return "";
+  let block = "";
+  if (winners.length > 0) {
+    block +=
+      "\n\nBriefs the team APPROVED — study what they share (subject choice, tone, composition discipline) and channel those qualities. Do NOT copy the concepts themselves:\n" +
+      winners.map((w) => `- ${w}`).join("\n");
+  }
+  if (losers.length > 0) {
+    block +=
+      "\n\nBriefs the team REJECTED — identify what likely failed and avoid it:\n" +
+      losers.map((l) => `- ${l}`).join("\n");
+  }
+  return block;
+}
+
 /** Excerpts of recent briefs so new concepts don't repeat them. */
 function recentConceptsBlock(): string {
   const recent = listRecentResponses("image.brief", 3).map((r) =>
@@ -131,6 +157,7 @@ export async function designImageBrief(
           `Platform & format: ${PLATFORM_ASPECT[post.platform]}\n\n` +
           `The ${post.kind === "ad" ? "ad" : "post"}'s copy:\n"""\n${post.caption.slice(0, 700)}\n"""\n` +
           recentConceptsBlock() +
+          outcomeExemplarsBlock() +
           "\n\nWrite the image-generation brief now.",
       },
     ],
@@ -201,6 +228,7 @@ export async function expandUserImageIntent(
           (post ? `The ad's copy:\n"""\n${post.caption.slice(0, 700)}\n"""\n\n` : "") +
           `The user's request: "${intent.slice(0, 500)}"` +
           recentConceptsBlock() +
+          outcomeExemplarsBlock() +
           uploadRules +
           "\n\nWrite the image-generation brief now, honoring the user's request.",
       },

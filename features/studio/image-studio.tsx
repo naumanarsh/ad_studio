@@ -15,6 +15,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { RetryImage } from "@/components/retry-image";
 import { Button } from "@/components/ui/button";
+import { ZoomableImage } from "@/components/zoomable-image";
 import {
   attachStudioImageAction,
   generateStudioImageAction,
@@ -39,6 +40,10 @@ export type Version = {
   src: string;
   studioId?: number;
   postImageId?: number;
+  /** Which image model made it — shown on the version chip. */
+  model?: string;
+  /** What the compliance reviewer concluded for this render. */
+  review?: { checked: boolean; approved: boolean; autoFixed: boolean };
 };
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -73,7 +78,32 @@ export function ImageStudio({
   const [styleKey, setStyleKey] = useState<string | null>(null);
   const [kind, setKind] = useState<"organic" | "ad">(defaultKind);
   const [model, setModel] = useState<ImageModelChoice>("gemini");
+  // A style pick auto-routes to its best model until the user overrides.
+  const [modelTouched, setModelTouched] = useState(false);
+  const [batch, setBatch] = useState(false);
+  const [useKit, setUseKit] = useState(true);
   const [pending, startTransition] = useTransition();
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+
+  // Honest stage labels while generating — nothing gets faster, but the
+  // user sees where the pipeline is instead of a bare spinner.
+  useEffect(() => {
+    if (!pending || startedAt === null) return;
+    const timer = setInterval(
+      () => setElapsed(Math.round((Date.now() - startedAt) / 1000)),
+      1000,
+    );
+    return () => clearInterval(timer);
+  }, [pending, startedAt]);
+
+  function stageLabel(edit: boolean, runs: number): string {
+    if (edit) return `Applying your edit… ${elapsed}s`;
+    const what = runs > 1 ? `${runs} concepts` : "the image";
+    if (elapsed < 35) return `Writing the brief… ${elapsed}s`;
+    if (elapsed < 75) return `Rendering ${what}… ${elapsed}s`;
+    return `Compliance review… ${elapsed}s`;
+  }
 
   // Post-context strips reload from the server; everything else recovers
   // from sessionStorage, so a dev reload or remount never eats a result.
@@ -154,30 +184,55 @@ export function ImageStudio({
     const style = STYLE_TEMPLATES.find((t) => t.key === styleKey);
     const fullPrompt =
       style && !isEdit ? `${text}\n\nLayout style: ${style.brief}` : text;
+    const request = {
+      prompt: fullPrompt,
+      postId,
+      baseImageId: isEdit ? current.studioId : undefined,
+      basePostImageId: isEdit ? current.postImageId : undefined,
+      uploads: attachments.map((a) => ({ mime: a.mime, data: a.data })),
+      kind,
+      model,
+      useBrandKit: useKit,
+    };
+    const runs = batch && !isEdit ? 3 : 1;
+    setStartedAt(Date.now());
+    setElapsed(0);
     startTransition(async () => {
-      const result = await generateStudioImageAction({
-        prompt: fullPrompt,
-        postId,
-        baseImageId: isEdit ? current.studioId : undefined,
-        basePostImageId: isEdit ? current.postImageId : undefined,
-        uploads: attachments.map((a) => ({ mime: a.mime, data: a.data })),
-        kind,
-        model,
-      });
-      if (!result.ok) {
-        toast.error(result.error);
+      const results = await Promise.all(
+        Array.from({ length: runs }, () =>
+          generateStudioImageAction(request),
+        ),
+      );
+      const succeeded = results.filter((r) => r.ok);
+      const failed = results.find((r) => !r.ok);
+      if (succeeded.length === 0) {
+        toast.error(failed && !failed.ok ? failed.error : "Generation failed.");
         return;
       }
-      const version: Version = {
-        uid: `studio-${result.data.id}`,
-        src: `/api/studio-images/${result.data.id}`,
-        studioId: result.data.id,
-      };
-      setVersions((v) => [...v, version]);
-      setCurrentUid(version.uid);
+      const fresh: Version[] = succeeded.map((r) => {
+        const { image, review } = (r as Extract<typeof r, { ok: true }>).data;
+        return {
+          uid: `studio-${image.id}`,
+          src: `/api/studio-images/${image.id}`,
+          studioId: image.id,
+          model: image.model,
+          review,
+        };
+      });
+      setVersions((v) => [...v, ...fresh]);
+      setCurrentUid(fresh.at(-1)!.uid);
       setEditing(true);
       setPrompt("");
-      toast.success(isEdit ? "Edit applied" : "Image ready");
+      toast.success(
+        isEdit
+          ? "Edit applied"
+          : runs > 1
+            ? `${succeeded.length} concepts ready — flip through the versions to pick one.`
+            : "Image ready",
+      );
+      if (failed && !failed.ok && succeeded.length < runs) {
+        toast.warning(`One concept failed: ${failed.error}`);
+      }
     });
   }
 
@@ -202,12 +257,34 @@ export function ImageStudio({
       {/* Result */}
       {current ? (
         <>
-          <RetryImage
+          <ZoomableImage
             src={current.src}
             alt="Ad image"
             className="w-full border"
           />
           <div className="flex flex-wrap items-center gap-2">
+            {current.review?.checked && (
+              <span
+                title={
+                  current.review.autoFixed
+                    ? "The reviewer found issues and applied one automatic fix pass."
+                    : current.review.approved
+                      ? "Reviewed against Meta health-ad rules and the design brief."
+                      : "The reviewer flagged issues it couldn't auto-fix — check the image closely."
+                }
+                className={`inline-flex items-center gap-1 border px-2 py-0.5 text-[11px] font-medium ${
+                  current.review.approved
+                    ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+                    : "border-amber-500/40 text-amber-600 dark:text-amber-400"
+                }`}
+              >
+                {current.review.autoFixed
+                  ? "✓ Compliance · auto-fixed"
+                  : current.review.approved
+                    ? "✓ Compliance checked"
+                    : "⚠ Review flagged issues"}
+              </span>
+            )}
             {postId && current.studioId && (
               <Button size="sm" onClick={attachToPost} disabled={pending}>
                 <Check className="size-4" /> Use for post
@@ -231,7 +308,7 @@ export function ImageStudio({
                     key={version.uid}
                     type="button"
                     onClick={() => setCurrentUid(version.uid)}
-                    title={`Version ${i + 1}`}
+                    title={`Version ${i + 1}${version.model ? ` · ${version.model}` : ""}`}
                     className={`relative size-12 overflow-hidden border ${
                       version.uid === currentUid
                         ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
@@ -295,7 +372,11 @@ export function ImageStudio({
             <button
               key={choice.value}
               type="button"
-              onClick={() => setModel(choice.value)}
+              title={choice.title}
+              onClick={() => {
+                setModel(choice.value);
+                setModelTouched(true);
+              }}
               className={`border px-2 py-0.5 text-xs transition-colors ${
                 model === choice.value
                   ? "border-foreground bg-foreground text-background"
@@ -303,8 +384,37 @@ export function ImageStudio({
               }`}
             >
               {choice.label}
+              <span className="ml-1 opacity-60">· {choice.hint}</span>
             </button>
           ))}
+          {!isEdit && (
+            <>
+              <button
+                type="button"
+                title="Generate three different concepts at once and pick the best"
+                onClick={() => setBatch((b) => !b)}
+                className={`ml-2 border px-2 py-0.5 text-xs transition-colors ${
+                  batch
+                    ? "border-foreground bg-foreground text-background"
+                    : "text-muted-foreground hover:bg-accent"
+                }`}
+              >
+                3 concepts
+              </button>
+              <button
+                type="button"
+                title="Attach your saved logo and product shots from the Brand page"
+                onClick={() => setUseKit((k) => !k)}
+                className={`border px-2 py-0.5 text-xs transition-colors ${
+                  useKit
+                    ? "border-foreground bg-foreground text-background"
+                    : "text-muted-foreground hover:bg-accent"
+                }`}
+              >
+                Brand kit
+              </button>
+            </>
+          )}
         </div>
 
         {!isEdit && (
@@ -340,9 +450,15 @@ export function ImageStudio({
                 key={template.key}
                 type="button"
                 title={template.brief}
-                onClick={() =>
-                  setStyleKey((k) => (k === template.key ? null : template.key))
-                }
+                onClick={() => {
+                  const next = styleKey === template.key ? null : template.key;
+                  setStyleKey(next);
+                  // Route to the archetype's best model unless the user
+                  // explicitly picked one.
+                  if (next && !modelTouched) {
+                    setModel(template.recommendedModel);
+                  }
+                }}
                 className={`border px-2 py-0.5 text-xs transition-colors ${
                   styleKey === template.key
                     ? "border-foreground bg-foreground text-background"
@@ -418,7 +534,7 @@ export function ImageStudio({
           >
             <Paperclip className="size-4" /> Attach
           </Button>
-          <span className="text-xs text-muted-foreground">
+          <span className="hidden text-xs text-muted-foreground sm:inline">
             Attachments stay for every step — logo, product, references.
           </span>
           <Button
@@ -428,7 +544,8 @@ export function ImageStudio({
           >
             {pending ? (
               <>
-                <RefreshCw className="size-4 animate-spin" /> Working…
+                <RefreshCw className="size-4 animate-spin" />{" "}
+                {stageLabel(isEdit, batch && !isEdit ? 3 : 1)}
               </>
             ) : (
               <>

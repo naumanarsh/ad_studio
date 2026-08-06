@@ -7,21 +7,23 @@ export type StudioImageMeta = {
   post_id: number | null;
   prompt: string;
   mime: string;
+  model: string;
   created_at: string;
 };
 
-const META_COLUMNS = "id, post_id, prompt, mime, created_at";
+const META_COLUMNS = "id, post_id, prompt, mime, model, created_at";
 
 export function insertStudioImage(image: {
   post_id: number | null;
   prompt: string;
   mime: string;
+  model: string;
   data: Buffer;
 }): StudioImageMeta {
   return getDb()
     .prepare(
-      `insert into studio_images (post_id, prompt, mime, data)
-       values (@post_id, @prompt, @mime, @data)
+      `insert into studio_images (post_id, prompt, mime, model, data)
+       values (@post_id, @prompt, @mime, @model, @data)
        returning ${META_COLUMNS}`,
     )
     .get(image) as StudioImageMeta;

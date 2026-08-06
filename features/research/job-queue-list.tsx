@@ -1,8 +1,10 @@
 "use client";
 
-import { AlertCircle, Clock, RefreshCw } from "lucide-react";
+import { AlertCircle, Clock, RefreshCw, RotateCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useTransition } from "react";
+import { toast } from "sonner";
+import { retryJobAction } from "@/lib/actions/jobs.actions";
 import type { Job } from "@/lib/repositories/jobs.repo";
 
 const STATUS: Record<
@@ -18,9 +20,22 @@ const STATUS: Record<
 /** In-flight and failed jobs — finished ones move to the Ready tab. */
 export function JobQueueList({ jobs }: { jobs: Job[] }) {
   const router = useRouter();
+  const [retrying, startRetry] = useTransition();
   const hasPending = jobs.some(
     (j) => j.status === "queued" || j.status === "running",
   );
+
+  function retry(jobId: number) {
+    startRetry(async () => {
+      const result = await retryJobAction({ jobId });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Back in the queue.");
+      router.refresh();
+    });
+  }
 
   // Live progress: refresh while work is in flight.
   useEffect(() => {
@@ -61,6 +76,17 @@ export function JobQueueList({ jobs }: { jobs: Job[] }) {
                   : ""}
               </p>
             </div>
+
+            {job.status === "failed" && (
+              <button
+                type="button"
+                onClick={() => retry(job.id)}
+                disabled={retrying}
+                className="inline-flex shrink-0 items-center gap-1 border px-2 py-1 text-xs font-medium hover:bg-accent disabled:opacity-60"
+              >
+                <RotateCcw className="size-3" /> Retry
+              </button>
+            )}
           </li>
         );
       })}

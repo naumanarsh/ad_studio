@@ -55,6 +55,10 @@ export function enqueuePostFromTrend(trendId: number): {
 } {
   const trend = getTrend(trendId);
   if (!trend) throw new Error("That trend no longer exists.");
+  // Dedupe: a second click must never queue (and pay for) the same work.
+  if (jobsRepo.findActiveJobForSource({ trend_id: trendId })) {
+    return { position: jobsRepo.countPendingJobs() };
+  }
   jobsRepo.enqueueJob({
     type: "post_from_trend",
     label: trend.title,
@@ -65,11 +69,22 @@ export function enqueuePostFromTrend(trendId: number): {
   return { position };
 }
 
+export function retryJob(jobId: number): void {
+  if (!jobsRepo.requeueJob(jobId)) {
+    throw new Error("Only failed jobs can be retried.");
+  }
+  kickJobQueue();
+}
+
 export function enqueuePostFromIdea(ideaId: number): {
   position: number;
 } {
   const idea = getIdea(ideaId);
   if (!idea) throw new Error("That idea no longer exists.");
+  // Dedupe: a second click must never queue (and pay for) the same work.
+  if (jobsRepo.findActiveJobForSource({ idea_id: ideaId })) {
+    return { position: jobsRepo.countPendingJobs() };
+  }
   jobsRepo.enqueueJob({
     type: "post_from_idea",
     label: idea.title,

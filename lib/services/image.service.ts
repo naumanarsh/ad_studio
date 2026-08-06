@@ -10,14 +10,17 @@ import {
   designBriefFor,
   extractHook,
   PLATFORM_ASPECT,
+  PLATFORM_ASPECT_CODE,
   STYLE_TEMPLATES,
 } from "@/lib/prompts/ad-design";
 import { recordAiRequest } from "@/lib/repositories/ai-logs.repo";
+import { listBrandKit } from "@/lib/repositories/brand-assets.repo";
 import { getBrandProfile } from "@/lib/repositories/brand.repo";
 import {
   critiqueAdImage,
   designImageBrief,
 } from "@/lib/services/art-director";
+import { assertWithinDailyBudget } from "@/lib/services/budget.service";
 import * as imagesRepo from "@/lib/repositories/post-images.repo";
 import * as postsRepo from "@/lib/repositories/posts.repo";
 import type { BrandProfile, Post, PostImageMeta } from "@/lib/types/content";
@@ -83,6 +86,7 @@ async function generateOne(
   provider: ImageProvider,
   prompt: string,
   references?: ImageReference[],
+  aspect?: string,
 ): Promise<ImageResult> {
   const start = Date.now();
   try {
@@ -90,6 +94,7 @@ async function generateOne(
       purpose: "post.image",
       prompt,
       references,
+      aspect,
     });
     recordAiRequest({
       provider: provider.name,
@@ -134,6 +139,7 @@ async function generateArtDirected(
   brand: BrandProfile | null,
   provider: ImageProvider,
 ): Promise<ImageGenerationSummary> {
+  const aspect = PLATFORM_ASPECT_CODE[post.platform];
   let brief: string | null = null;
   let prompt: string;
   try {
@@ -148,7 +154,25 @@ async function generateArtDirected(
     );
   }
 
-  let image = await generateOne(provider, prompt);
+  // The stored brand kit rides along, so generated visuals feature the
+  // real logo and products instead of invented look-alikes.
+  const kit = listBrandKit();
+  if (kit.length > 0) {
+    const roles = kit.map((asset, i) =>
+      asset.kind === "logo"
+        ? `Image ${i + 1}: the brand's official logo — reproduce it EXACTLY.`
+        : `Image ${i + 1}: the brand's real product photo — composite THIS product faithfully when the design features one.`,
+    );
+    prompt =
+      `You are given ${kit.length} attached brand image${kit.length === 1 ? "" : "s"}.\n` +
+      `${roles.join("\n")}\n\n${prompt}`;
+  }
+  const kitReferences = kit.map((asset) => ({
+    mime: asset.mime,
+    data: asset.data.toString("base64"),
+  }));
+
+  let image = await generateOne(provider, prompt, kitReferences, aspect);
   const failed: string[] = [];
   // Real image models can revise from a reference; the placeholder can't.
   if (brief && provider.name !== "placeholder") {
@@ -162,6 +186,7 @@ async function generateArtDirected(
           provider,
           `Revise this ad image. Apply exactly these fixes and change nothing else:\n${review.fixes}`,
           [{ mime: image.mime, data: image.data.toString("base64") }],
+          aspect,
         );
       }
     } catch {
@@ -190,6 +215,7 @@ export async function generatePostImages(
   mode: ImageMode = "single",
   model?: string | null,
 ): Promise<ImageGenerationSummary> {
+  assertWithinDailyBudget();
   const post = postsRepo.getPost(postId);
   if (!post) {
     throw new Error("That post no longer exists.");
@@ -206,7 +232,12 @@ export async function generatePostImages(
   const results = await Promise.allSettled(
     directions.map(async ({ key, direction }) => {
       const prompt = buildPrompt(post, brand, key, direction);
-      const image = await generateOne(provider, prompt);
+      const image = await generateOne(
+        provider,
+        prompt,
+        undefined,
+        PLATFORM_ASPECT_CODE[post.platform],
+      );
       return { key, prompt, image };
     }),
   );

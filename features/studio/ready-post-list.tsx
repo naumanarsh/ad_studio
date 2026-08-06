@@ -1,11 +1,23 @@
 "use client";
 
-import { ChevronDown, Copy, Download, Palette } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronDown,
+  Copy,
+  Download,
+  ImagePlus,
+  Palette,
+  RefreshCw,
+} from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { RetryImage } from "@/components/retry-image";
 import { Button } from "@/components/ui/button";
+import { ZoomableImage } from "@/components/zoomable-image";
+import { EditableCaption } from "@/features/posts/editable-caption";
+import { generatePostImagesAction } from "@/lib/actions/image.actions";
 import {
   POST_PLATFORM_LABELS,
   type Post,
@@ -24,7 +36,24 @@ export function ReadyPostList({
   posts: Post[];
   imagesByPost: Record<number, PostImageMeta[]>;
 }) {
+  const router = useRouter();
   const [openId, setOpenId] = useState<number | null>(null);
+  const [fixingId, setFixingId] = useState<number | null>(null);
+  const [, startFix] = useTransition();
+
+  function regenerateImage(postId: number) {
+    setFixingId(postId);
+    startFix(async () => {
+      const result = await generatePostImagesAction({ postId, mode: "single" });
+      setFixingId(null);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Image ready.");
+      router.refresh();
+    });
+  }
 
   if (posts.length === 0) {
     return (
@@ -84,13 +113,38 @@ export function ReadyPostList({
 
             {open && (
               <div className="flex flex-col gap-4 border-t bg-card px-4 py-4">
+                {!image && (
+                  <div className="flex flex-wrap items-center gap-3 border border-amber-300/60 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                    <AlertTriangle className="size-4 shrink-0" />
+                    The image didn&apos;t generate for this post.
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={fixingId === post.id}
+                      onClick={() => regenerateImage(post.id)}
+                    >
+                      {fixingId === post.id ? (
+                        <>
+                          <RefreshCw className="size-4 animate-spin" />{" "}
+                          Creating…
+                        </>
+                      ) : (
+                        <>
+                          <ImagePlus className="size-4" /> Generate image
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
                 {image && (
                   <div className="flex flex-col gap-2">
-                    <RetryImage
-                      src={`/api/images/${image.id}`}
-                      alt="Post visual"
-                      className="w-full max-w-sm border"
-                    />
+                    <div className="w-full max-w-sm">
+                      <ZoomableImage
+                        src={`/api/images/${image.id}`}
+                        alt="Post visual"
+                        className="w-full border"
+                      />
+                    </div>
                     <Button
                       size="sm"
                       variant="outline"
@@ -107,14 +161,7 @@ export function ReadyPostList({
                   </div>
                 )}
                 <div className="flex flex-col gap-2">
-                  <p className="whitespace-pre-line text-sm leading-relaxed">
-                    {post.caption}
-                  </p>
-                  {post.hashtags && (
-                    <p className="text-xs text-muted-foreground">
-                      {post.hashtags}
-                    </p>
-                  )}
+                  <EditableCaption post={post} />
                   <Button
                     size="sm"
                     className="self-start"

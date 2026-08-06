@@ -8,12 +8,17 @@ import {
   PLATFORM_ASPECT,
 } from "@/lib/prompts/ad-design";
 import { recordAiRequest } from "@/lib/repositories/ai-logs.repo";
+import { listBrandKit } from "@/lib/repositories/brand-assets.repo";
 import { getBrandProfile } from "@/lib/repositories/brand.repo";
 import * as postImagesRepo from "@/lib/repositories/post-images.repo";
 import { getPost } from "@/lib/repositories/posts.repo";
+import { assertWithinDailyBudget } from "@/lib/services/budget.service";
 import * as studioRepo from "@/lib/repositories/studio-images.repo";
 import type { StudioImageMeta } from "@/lib/repositories/studio-images.repo";
-import { expandUserImageIntent } from "@/lib/services/art-director";
+import {
+  critiqueAdImage,
+  expandUserImageIntent,
+} from "@/lib/services/art-director";
 import type { Post, PostImageMeta } from "@/lib/types/content";
 
 // Below this, a fresh-generation prompt is too thin for a good image —
@@ -63,6 +68,18 @@ export function intentForCompetitorTopic(
   return `Competitor ${competitorName} runs this angle: "${topic.topic}" (${topic.angle.slice(0, 100)}). Create OUR brand's stronger take on it as a visual.`;
 }
 
+/** What the reviewer did to a fresh generation. */
+export type StudioReview = {
+  checked: boolean;
+  approved: boolean;
+  autoFixed: boolean;
+};
+
+export type StudioGenerationResult = {
+  image: StudioImageMeta;
+  review: StudioReview;
+};
+
 export async function generateStudioImage(input: {
   prompt: string;
   postId: number | null;
@@ -76,8 +93,20 @@ export async function generateStudioImage(input: {
   kind?: "organic" | "ad";
   /** Which image model renders it — defaults to the configured provider. */
   model?: string | null;
-}): Promise<StudioImageMeta> {
+  /** Attach the stored brand kit (logo + product shots). Default true. */
+  useBrandKit?: boolean;
+}): Promise<StudioGenerationResult> {
+  assertWithinDailyBudget();
   const hasBase = Boolean(input.baseImageId || input.basePostImageId);
+  // The stored brand kit rides along on fresh generations, so the team
+  // never re-uploads the logo and the model never invents look-alikes.
+  const kit =
+    !hasBase && (input.useBrandKit ?? true) ? listBrandKit() : [];
+  const kitReferences: ImageReference[] = kit.map((asset) => ({
+    mime: asset.mime,
+    data: asset.data.toString("base64"),
+  }));
+
   let userPrompt = input.prompt;
   // Vague fresh requests ("make an insta ad") get art-directed into a
   // full brief; edits and already-detailed prompts pass through as-is.
@@ -89,7 +118,7 @@ export async function generateStudioImage(input: {
         getBrandProfile(),
         input.postId ? getPost(input.postId) : null,
         input.kind,
-        input.uploads ?? [],
+        [...kitReferences, ...(input.uploads ?? [])],
       );
       expanded = true;
     } catch {
@@ -115,6 +144,14 @@ export async function generateStudioImage(input: {
       `Image 1: the CURRENT ad design. Apply the user's instruction to this exact image — change only what is asked, keep everything else identical.`,
     );
   }
+  kit.forEach((asset, i) => {
+    references.push(kitReferences[i]);
+    manifest.push(
+      asset.kind === "logo"
+        ? `Image ${references.length}: the brand's official logo. Reproduce it EXACTLY — same shapes, colors and lettering. Never redraw or restyle it.`
+        : `Image ${references.length}: the brand's real product photo. When the design features the product, composite THIS one faithfully — never an invented version.`,
+    );
+  });
   for (const upload of input.uploads ?? []) {
     references.push(upload);
     manifest.push(
@@ -128,26 +165,88 @@ export async function generateStudioImage(input: {
     manifest.length > 0
       ? `You are given ${references.length} attached image${references.length === 1 ? "" : "s"}.\n` +
         `${manifest.join("\n")}\n\nUser instruction:\n${userPrompt}` +
-        ((input.uploads ?? []).length > 0
-          ? "\n\nNon-negotiable: the attached user assets are the real " +
+        (kit.length + (input.uploads ?? []).length > 0
+          ? "\n\nNon-negotiable: the attached brand/user assets are the real " +
             "products/brand elements — composite them exactly as provided; " +
             "never paint a look-alike or substitute."
           : "")
       : userPrompt;
 
   const provider = getImageProvider(input.model);
+  const image = await generateLogged(provider, prompt, input.prompt, {
+    aspect: STUDIO_ASPECT,
+    references,
+  });
+
+  // Quality gate on fresh generations: the reviewer checks compliance and
+  // craft against the brief, and dictates one auto-fix pass if needed.
+  const review: StudioReview = {
+    checked: false,
+    approved: true,
+    autoFixed: false,
+  };
+  let finalImage = image;
+  if (!hasBase) {
+    try {
+      const verdict = await critiqueAdImage(
+        { mime: image.mime, data: image.data },
+        userPrompt,
+      );
+      review.checked = true;
+      review.approved = verdict.approved;
+      if (!verdict.approved && verdict.fixes) {
+        finalImage = await generateLogged(
+          provider,
+          `Revise this ad image. Apply exactly these fixes and change nothing else:\n${verdict.fixes}`,
+          input.prompt,
+          {
+            aspect: STUDIO_ASPECT,
+            references: [
+              { mime: image.mime, data: image.data.toString("base64") },
+            ],
+          },
+        );
+        review.autoFixed = true;
+        review.approved = true;
+      }
+    } catch {
+      // Review is best-effort — the first render still ships.
+    }
+  }
+
+  const meta = studioRepo.insertStudioImage({
+    post_id: input.postId,
+    prompt: input.prompt,
+    mime: finalImage.mime,
+    model: finalImage.model,
+    data: finalImage.data,
+  });
+  return { image: meta, review };
+}
+
+// Studio output format: Meta feed portrait unless a post dictates otherwise.
+const STUDIO_ASPECT = "4:5";
+
+/** One logged studio generation call. */
+async function generateLogged(
+  provider: ReturnType<typeof getImageProvider>,
+  prompt: string,
+  loggedPrompt: string,
+  opts: { aspect?: string; references?: ImageReference[] } = {},
+) {
   const start = Date.now();
   try {
     const image = await provider.generate({
       purpose: "studio.image",
       prompt,
-      references,
+      references: opts.references,
+      aspect: opts.aspect,
     });
     recordAiRequest({
       provider: provider.name,
       model: image.model,
       purpose: "studio.image",
-      prompt: input.prompt,
+      prompt: loggedPrompt,
       response: `(${image.mime}, ${image.data.length} bytes)`,
       input_tokens: 0,
       output_tokens: 0,
@@ -155,18 +254,13 @@ export async function generateStudioImage(input: {
       cost_usd: image.costUsd,
       error: null,
     });
-    return studioRepo.insertStudioImage({
-      post_id: input.postId,
-      prompt: input.prompt,
-      mime: image.mime,
-      data: image.data,
-    });
+    return image;
   } catch (error) {
     recordAiRequest({
       provider: provider.name,
       model: "unknown",
       purpose: "studio.image",
-      prompt: input.prompt,
+      prompt: loggedPrompt,
       response: "",
       input_tokens: 0,
       output_tokens: 0,

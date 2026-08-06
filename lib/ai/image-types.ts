@@ -13,6 +13,11 @@ export type ImageRequest = {
    * edit) — models like Nano Banana revise these per the prompt.
    */
   references?: ImageReference[];
+  /**
+   * Output aspect ratio, e.g. "4:5" — enforced via the provider API, not
+   * just the prompt text (models often ignore prose aspect requests).
+   */
+  aspect?: string;
 };
 
 export type ImageResult = {

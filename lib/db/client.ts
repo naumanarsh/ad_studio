@@ -87,6 +87,17 @@ function migrate(db: Database.Database): void {
     );
   }
 
+  const studioCols = (
+    db
+      .prepare(`select name from pragma_table_info('studio_images')`)
+      .all() as Array<{ name: string }>
+  ).map((c) => c.name);
+  if (studioCols.length > 0 && !studioCols.includes("model")) {
+    db.exec(
+      `alter table studio_images add column model text not null default ''`,
+    );
+  }
+
   const postCols = (
     db
       .prepare(`select name from pragma_table_info('posts')`)

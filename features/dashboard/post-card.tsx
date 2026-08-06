@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { RetryImage } from "@/components/retry-image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { EditableCaption } from "@/features/posts/editable-caption";
 import {
   generatePostImagesAction,
   selectPostImageAction,
@@ -39,9 +40,14 @@ const DECIDED_STYLES: Record<
 export function PostCard({
   post,
   images = [],
+  selected = false,
+  onToggleSelect,
 }: {
   post: Post;
   images?: PostImageMeta[];
+  /** Multi-select state, when rendered inside a bulk-review grid. */
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -94,7 +100,23 @@ export function PostCard({
   const downloadImage = images.find((i) => i.selected) ?? images.at(-1) ?? null;
 
   return (
-    <Card className="flex flex-col">
+    <Card
+      className={`relative flex flex-col ${selected ? "ring-2 ring-primary" : ""}`}
+    >
+      {onToggleSelect && (
+        <button
+          type="button"
+          aria-label={selected ? "Deselect post" : "Select post"}
+          onClick={onToggleSelect}
+          className={`absolute right-3 top-3 z-10 flex size-5 items-center justify-center border transition-colors ${
+            selected
+              ? "border-primary bg-primary text-primary-foreground"
+              : "bg-background text-transparent hover:border-primary"
+          }`}
+        >
+          <Check className="size-3.5" />
+        </button>
+      )}
       <CardContent className="flex-1">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-flame">
           {POST_PLATFORM_LABELS[post.platform]} ·{" "}
@@ -106,12 +128,7 @@ export function PostCard({
               ? "video script"
               : "organic post"}
         </p>
-        <p className="whitespace-pre-line text-sm leading-relaxed">
-          {post.caption}
-        </p>
-        {post.hashtags && (
-          <p className="mt-3 text-xs text-muted-foreground">{post.hashtags}</p>
-        )}
+        <EditableCaption post={post} />
         {images.length > 0 && (
           <div
             className={`mt-4 grid gap-2 ${

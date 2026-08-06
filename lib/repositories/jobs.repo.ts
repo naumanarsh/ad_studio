@@ -57,12 +57,24 @@ export function markJobFailed(id: number, error: string): void {
     .run(error.slice(0, 500), id);
 }
 
+/** Put a failed job back in line. */
+export function requeueJob(id: number): boolean {
+  return (
+    getDb()
+      .prepare(
+        `update jobs set status = 'queued', error = null, updated_at = datetime('now')
+          where id = ? and status = 'failed'`,
+      )
+      .run(id).changes > 0
+  );
+}
+
 /** Jobs stuck in `running` (e.g. after a server restart) → back to queued. */
 export function requeueStalledJobs(): void {
   getDb()
     .prepare(
       `update jobs set status = 'queued', updated_at = datetime('now')
-        where status = 'running' and updated_at < datetime('now', '-10 minutes')`,
+        where status = 'running' and updated_at < datetime('now', '-30 minutes')`,
     )
     .run();
 }
@@ -78,6 +90,36 @@ export function countPendingJobs(): number {
     getDb()
       .prepare(
         `select count(*) n from jobs where status in ('queued', 'running')`,
+      )
+      .get() as { n: number }
+  ).n;
+}
+
+/** An already-waiting or running job for the same source — dedupe guard. */
+export function findActiveJobForSource(
+  source: { trend_id?: number; idea_id?: number },
+): Job | null {
+  const row = source.trend_id
+    ? getDb()
+        .prepare(
+          `select * from jobs where trend_id = ? and status in ('queued', 'running') limit 1`,
+        )
+        .get(source.trend_id)
+    : getDb()
+        .prepare(
+          `select * from jobs where idea_id = ? and status in ('queued', 'running') limit 1`,
+        )
+        .get(source.idea_id);
+  return (row as Job | undefined) ?? null;
+}
+
+/** Failed jobs in the last day — surfaced in the header pill. */
+export function countRecentFailedJobs(): number {
+  return (
+    getDb()
+      .prepare(
+        `select count(*) n from jobs
+          where status = 'failed' and updated_at >= datetime('now', '-1 day')`,
       )
       .get() as { n: number }
   ).n;

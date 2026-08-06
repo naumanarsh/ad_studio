@@ -4,8 +4,20 @@
  * adapter names.
  */
 export const IMAGE_MODEL_CHOICES = [
-  { value: "gemini", label: "Nano Banana" },
-  { value: "openai", label: "GPT Image 2" },
+  {
+    value: "gemini",
+    label: "Nano Banana",
+    hint: "photo",
+    title:
+      "Best for photography-led ads, product compositing and quick iterative edits.",
+  },
+  {
+    value: "openai",
+    label: "GPT Image 2",
+    hint: "text & layout",
+    title:
+      "Best for typography-heavy layouts — offer stacks, comparisons, testimonials, notes-style.",
+  },
 ] as const;
 
 export type ImageModelChoice = (typeof IMAGE_MODEL_CHOICES)[number]["value"];

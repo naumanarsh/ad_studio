@@ -7,7 +7,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { IdeaList, type IdeaCreation } from "@/features/dashboard/idea-list";
-import { PostCard } from "@/features/dashboard/post-card";
+import { PostGrid } from "@/features/dashboard/post-grid";
 import {
   RegenerateBriefButton,
   RunBriefButton,
@@ -44,11 +44,9 @@ function Section({
 
 export default function DashboardPage() {
   const brief = getTodaysBrief();
-  const imagesByPost = new Map<number, PostImageMeta[]>();
+  const imagesByPost: Record<number, PostImageMeta[]> = {};
   for (const image of listImagesForPosts(brief.posts.map((p) => p.id))) {
-    const list = imagesByPost.get(image.post_id) ?? [];
-    list.push(image);
-    imagesByPost.set(image.post_id, list);
+    (imagesByPost[image.post_id] ??= []).push(image);
   }
   // Which ideas are being worked on or already produced a post — shown
   // back on the idea cards.
@@ -145,28 +143,12 @@ export default function DashboardPage() {
           </TabsList>
           {organicPosts.length > 0 && (
             <TabsContent value="organic">
-              <div className="grid gap-4 md:grid-cols-2">
-                {organicPosts.map((post) => (
-                  <PostCard
-                    key={post.id}
-                    post={post}
-                    images={imagesByPost.get(post.id) ?? []}
-                  />
-                ))}
-              </div>
+              <PostGrid posts={organicPosts} imagesByPost={imagesByPost} />
             </TabsContent>
           )}
           {adPosts.length > 0 && (
             <TabsContent value="ads">
-              <div className="grid gap-4 md:grid-cols-2">
-                {adPosts.map((post) => (
-                  <PostCard
-                    key={post.id}
-                    post={post}
-                    images={imagesByPost.get(post.id) ?? []}
-                  />
-                ))}
-              </div>
+              <PostGrid posts={adPosts} imagesByPost={imagesByPost} />
             </TabsContent>
           )}
         </Tabs>

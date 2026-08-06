@@ -17,6 +17,15 @@ type ImagesResponse = {
   data?: Array<{ b64_json?: string }>;
 };
 
+/** GPT Image supports three fixed sizes — pick the closest to the aspect. */
+function sizeForAspect(aspect?: string): string {
+  if (!aspect) return "auto";
+  const [w, h] = aspect.split(":").map(Number);
+  if (!w || !h) return "auto";
+  if (w === h) return "1024x1024";
+  return w > h ? "1536x1024" : "1024x1536";
+}
+
 /**
  * OpenAI's GPT Image model via the Images API. Fresh prompts hit
  * /images/generations; requests with reference images hit /images/edits,
@@ -45,7 +54,7 @@ export class OpenAIImageProvider implements ImageProvider {
       const form = new FormData();
       form.append("model", this.model);
       form.append("prompt", request.prompt);
-      form.append("size", "auto");
+      form.append("size", sizeForAspect(request.aspect));
       references.forEach((ref, i) => {
         form.append(
           "image[]",
@@ -69,7 +78,7 @@ export class OpenAIImageProvider implements ImageProvider {
         body: JSON.stringify({
           model: this.model,
           prompt: request.prompt,
-          size: "auto",
+          size: sizeForAspect(request.aspect),
         }),
         signal: AbortSignal.timeout(180_000),
       });

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { CompetitorManager } from "@/features/competitors/competitor-manager";
 import { IdeaList, type IdeaCreation } from "@/features/dashboard/idea-list";
-import { PostCard } from "@/features/dashboard/post-card";
+import { PostGrid } from "@/features/dashboard/post-grid";
 import { SectionTabs, type Section } from "@/components/section-tabs";
 import { TopicManager } from "@/features/research/topic-manager";
 import { TrendTabs } from "@/features/research/trend-tabs";
@@ -21,11 +21,9 @@ export default function ResearchPage() {
   const topics = listTopics();
   const competitors = listCompetitors();
   const drafts = brief.posts.filter((p) => p.kind === "organic");
-  const imagesByPost = new Map<number, PostImageMeta[]>();
+  const imagesByPost: Record<number, PostImageMeta[]> = {};
   for (const image of listImagesForPosts(drafts.map((p) => p.id))) {
-    const list = imagesByPost.get(image.post_id) ?? [];
-    list.push(image);
-    imagesByPost.set(image.post_id, list);
+    (imagesByPost[image.post_id] ??= []).push(image);
   }
 
   // Creation status shown back at the source: which trends/ideas are being
@@ -155,15 +153,7 @@ export default function ResearchPage() {
       ),
     drafts:
       drafts.length > 0 ? (
-        <div className="grid gap-4 md:grid-cols-2">
-          {drafts.map((post) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              images={imagesByPost.get(post.id) ?? []}
-            />
-          ))}
-        </div>
+        <PostGrid posts={drafts} imagesByPost={imagesByPost} />
       ) : (
         <p className="border px-4 py-6 text-sm text-muted-foreground">
           No organic drafts today — run the brief from the Today tab.

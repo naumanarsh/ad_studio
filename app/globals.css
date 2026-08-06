@@ -151,3 +151,9 @@
 :root {
   --font-sans: var(--font-geist-sans);
 }
+
+/* Keyboard focus is always visible — chips, tabs and links included. */
+:where(button, a, [role="tab"], summary):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}

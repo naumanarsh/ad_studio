@@ -103,7 +103,7 @@ export function BrandForm({ profile }: { profile: BrandProfile | null }) {
   }
 
   return (
-    <div className="flex max-w-2xl flex-col gap-5">
+    <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1.5">
         <label className="text-sm font-medium" htmlFor="brand-website">
           Website

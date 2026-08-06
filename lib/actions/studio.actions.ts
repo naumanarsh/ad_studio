@@ -4,11 +4,11 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { parseInput } from "@/lib/actions/action-utils";
 import { IMAGE_MODEL_VALUES } from "@/lib/ai/image-choices";
-import type { StudioImageMeta } from "@/lib/repositories/studio-images.repo";
 import { toUserMessage } from "@/lib/services/errors";
 import {
   attachStudioImageToPost,
   generateStudioImage,
+  type StudioGenerationResult,
 } from "@/lib/services/studio.service";
 import { fail, ok, type ActionResult } from "@/lib/types/result";
 import type { PostImageMeta } from "@/lib/types/content";
@@ -23,6 +23,7 @@ const generateSchema = z.object({
   basePostImageId: z.number().int().positive().optional(),
   kind: z.enum(["organic", "ad"]).optional(),
   model: z.enum(IMAGE_MODEL_VALUES).optional(),
+  useBrandKit: z.boolean().optional(),
   uploads: z
     .array(
       z.object({
@@ -36,7 +37,7 @@ const generateSchema = z.object({
 
 export async function generateStudioImageAction(
   input: unknown,
-): Promise<ActionResult<StudioImageMeta>> {
+): Promise<ActionResult<StudioGenerationResult>> {
   const parsed = parseInput(generateSchema, input);
   if (!parsed.success) return parsed.result;
 
