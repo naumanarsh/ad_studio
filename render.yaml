@@ -1,0 +1,36 @@
+# Render blueprint — staging deploy for Ad Studio.
+# Single instance by design: SQLite + the in-process job queue are
+# single-process. Do not scale horizontally until the Supabase migration.
+services:
+  - type: web
+    name: ad-studio-staging
+    runtime: node
+    plan: starter
+    numInstances: 1
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    # Unauthenticated liveness probe — exempt from the staging password.
+    healthCheckPath: /api/health
+    disk:
+      name: ad-studio-data
+      mountPath: /var/data
+      sizeGB: 5
+    envVars:
+      # SQLite + generated media live on the persistent disk.
+      - key: AD_STUDIO_DATA_DIR
+        value: /var/data
+      - key: NODE_VERSION
+        value: "22"
+      # Hard daily ceiling on AI spend — staging default is deliberately low.
+      - key: AI_DAILY_BUDGET_USD
+        value: "10"
+      # Set these in the Render dashboard (never committed):
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      # Basic-auth password protecting the whole staging site.
+      - key: STAGING_PASSWORD
+        sync: false
