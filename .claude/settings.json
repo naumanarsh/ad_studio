@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:claude.ai)",
+      "Bash(chromium-cli --session adstudio)",
+      "Bash(/usr/bin/google-chrome --headless --disable-gpu --no-sandbox --window-size=1600,1000 --screenshot=dashboard.png http://localhost:3000/dashboard)",
+      "Bash(/usr/bin/google-chrome --headless --disable-gpu --no-sandbox --window-size=1600,1000 --screenshot=research.png http://localhost:3000/research)",
+      "Bash(/usr/bin/google-chrome --headless --disable-gpu --no-sandbox --window-size=1600,1000 --screenshot=dashboard-light.png http://localhost:3000/dashboard)",
+      "Bash(/usr/bin/google-chrome --headless --disable-gpu --no-sandbox --window-size=1600,1000 --screenshot=compose-light.png http://localhost:3000/compose)",
+      "Bash(lsof -ti:3000 -sTCP:LISTEN)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}\\\\n' http://localhost:3000/dashboard)",
+      "Bash(lsof -iTCP -sTCP:LISTEN -P -n)",
+      "Bash(awk 'NR>1 {print $1, $2, $9}')",
+      "Bash(kill 84252 112344 112362 112363 112390 114140 114155 114156 114187)",
+      "Bash(ps -eo pid,cmd)",
+      "Bash(curl -s -o /dev/null -m 3 -w '%{http_code}\\\\n' http://localhost:3000)"
+    ]
+  }
+}
