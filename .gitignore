@@ -33,6 +33,15 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# local SQLite database (posts, generated images, request logs)
+/data
+
+# local editor/agent settings
+.claude/settings.local.json
+
+# stray saved page — not part of the app
+/index.html
+
 # vercel
 .vercel
 

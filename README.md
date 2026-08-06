@@ -1,36 +1,61 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ad Studio — AI Marketing Operating System
 
-## Getting Started
+A SaaS that automates the marketing workflow end-to-end:
+research → ideas → content → images/video → approval → publishing → analytics.
 
-First, run the development server:
+**Status: core pipeline live.** The morning brief works today: one click pulls
+real trends (Google Trends + marketing RSS), generates content ideas, drafts
+platform posts, and queues them for approve/reject on the dashboard.
+Auth/organizations are parked until the product core is done
+(design + migration preserved in `docs/` and `supabase/migrations/`).
+
+## Run it
+
+Zero configuration — no API keys, no database setup:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000 → click **Generate today's brief**.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **AI**: runs on a mock provider by default (offline, free). Real adapters
+  plug into `lib/ai/registry.ts` behind the same `AIProvider` interface —
+  set `AI_PROVIDER` in `.env.local` once one is added.
+- **Data**: local SQLite at `./data/ad-studio.db`, created automatically.
+  Every AI request is logged (`ai_request_logs`: tokens, latency, cost).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Stack
 
-## Learn More
+Next.js 15 (App Router) · TypeScript · Tailwind v4 + shadcn/ui · SQLite
+(better-sqlite3, swapping to Supabase Postgres later) · React Hook Form + Zod
+· TanStack Query.
 
-To learn more about Next.js, take a look at the following resources:
+## Commands
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Command | Purpose |
+|---|---|
+| `pnpm dev` | Development server |
+| `pnpm build` | Production build |
+| `pnpm start` | Serve the production build |
+| `pnpm lint` | ESLint |
+| `pnpm typecheck` | TypeScript, no emit |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## How the pipeline works
 
-## Deploy on Vercel
+`runMorningBrief()` (lib/services/brief.service.ts) is idempotent per day:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. **Research** — fetch RSS sources (Google Trends US, Marketing Dive, Social
+   Media Today); each source degrades independently, with bundled sample
+   trends as a fully-offline fallback.
+2. **Ideas** — trends → `AIProvider` → validated JSON (Zod) → stored ideas.
+3. **Posts** — top ideas → Instagram + LinkedIn captions → pending drafts.
+4. **Review** — dashboard shows everything; approve/reject per post.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Architecture rules (short version)
+
+Presentation → Actions → Services → Repositories → Database. Components hold
+no business logic; every query lives in a repository; server actions are
+validate → delegate; AI SDKs are only imported inside `lib/ai`; files stay
+under 300 lines. Details in [docs/](docs/).
